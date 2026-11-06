@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  filterBookmarks,
   formatBookmark,
+  isStoreUnexpectedlyEmpty,
   generateSlug,
   normalizeUrl,
   parseBookmarks,
@@ -80,4 +82,30 @@ test('a saved bookmark formats as "<url> :: <slug>"', () => {
     formatBookmark({ url: 'https://www.example.com', slug: 'mona-7fk2' }),
     'https://www.example.com :: mona-7fk2',
   );
+});
+
+const sample = [
+  { url: 'https://Example.com/docs', slug: 'mona-aB12' },
+  { url: 'https://github.com', slug: 'mona-zz99' },
+];
+
+test('filterBookmarks matches URL or slug case-insensitively', () => {
+  assert.deepEqual(filterBookmarks(sample, 'EXAMPLE'), [sample[0]]);
+  assert.deepEqual(filterBookmarks(sample, 'MONA-ZZ'), [sample[1]]);
+  assert.deepEqual(filterBookmarks(sample, '  '), sample);
+  assert.deepEqual(filterBookmarks(sample, 'nope'), []);
+});
+
+test('filterBookmarks does not mutate its input', () => {
+  const copy = structuredClone(sample);
+  filterBookmarks(sample, 'git');
+  assert.deepEqual(sample, copy);
+});
+
+test('isStoreUnexpectedlyEmpty detects a wiped store', () => {
+  assert.equal(isStoreUnexpectedlyEmpty('3', 0), true);
+  assert.equal(isStoreUnexpectedlyEmpty('3', 2), false);
+  assert.equal(isStoreUnexpectedlyEmpty('0', 0), false);
+  assert.equal(isStoreUnexpectedlyEmpty(null, 0), false);
+  assert.equal(isStoreUnexpectedlyEmpty('abc', 0), false);
 });

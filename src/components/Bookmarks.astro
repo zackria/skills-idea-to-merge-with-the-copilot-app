@@ -31,12 +31,26 @@
 
 <p class="hint">Paste a URL and select <strong>Add bookmark</strong> to generate its short <code>mona-</code> slug.</p>
 
+<p class="hint" id="storage-warning">Heads up: bookmarks are stored only in this browser on this device. Clearing site data, private windows, or another browser will not have them — use <strong>Export</strong> to back up.</p>
+
+<p id="lost-warning" class="message" role="alert" hidden></p>
+
 <p id="empty-state" class="empty">No bookmarks yet — add your first link above.</p>
 
 <div id="list-header" hidden>
   <h2 class="list-title">Saved bookmarks</h2>
-  <button id="clear-all" type="button" class="clear">Clear all</button>
+  <div>
+    <button id="export" type="button" class="clear">Export</button>
+    <button id="clear-all" type="button" class="clear">Clear all</button>
+  </div>
 </div>
+
+<div id="search-wrap" class="field" hidden>
+  <label for="search">Search bookmarks</label>
+  <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Filter by URL or mona- slug" />
+</div>
+
+<p id="no-matches" class="empty" role="status" hidden>No matches for your search.</p>
 
 <ul id="bookmark-list" aria-label="Saved bookmarks" aria-live="polite">
   <!-- Bookmarks render here in the browser. -->
@@ -47,6 +61,9 @@
   // build), so localStorage is safe to touch here and nowhere else.
   import {
     STORAGE_KEY,
+    COUNT_KEY,
+    filterBookmarks,
+    isStoreUnexpectedlyEmpty,
     SEPARATOR,
     generateSlug,
     normalizeUrl,
@@ -62,6 +79,11 @@
   const listHeader = document.getElementById('list-header');
   const clearAll = document.getElementById('clear-all');
   const message = document.getElementById('form-message');
+  const search = document.getElementById('search') as HTMLInputElement | null;
+  const searchWrap = document.getElementById('search-wrap');
+  const noMatches = document.getElementById('no-matches');
+  const exportBtn = document.getElementById('export');
+  const lostWarning = document.getElementById('lost-warning');
 
   let bookmarks: Bookmark[] = [];
 
@@ -76,6 +98,7 @@
   function save(): void {
     try {
       localStorage.setItem(STORAGE_KEY, serializeBookmarks(bookmarks));
+      localStorage.setItem(COUNT_KEY, String(bookmarks.length));
     } catch {
       showMessage('Could not save to browser storage; this bookmark will not persist.');
     }
@@ -87,8 +110,9 @@
 
   function render(): void {
     if (!list) return;
+    const visible = filterBookmarks(bookmarks, search?.value ?? '');
     list.replaceChildren(
-      ...bookmarks.map((bookmark) => {
+      ...visible.map((bookmark) => {
         const li = document.createElement('li');
         li.className = 'bookmark';
 
@@ -128,6 +152,8 @@
     const hasItems = bookmarks.length > 0;
     if (emptyState) emptyState.hidden = hasItems;
     if (listHeader) listHeader.hidden = !hasItems;
+    if (searchWrap) searchWrap.hidden = !hasItems;
+    if (noMatches) noMatches.hidden = !hasItems || visible.length > 0;
   }
 
   function add(raw: string): void {
@@ -163,12 +189,34 @@
     bookmarks = [];
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(COUNT_KEY);
     } catch {
       /* storage unavailable; the in-memory list is already cleared */
     }
     render();
   });
 
+  search?.addEventListener('input', render);
+
+  exportBtn?.addEventListener('click', () => {
+    const blob = new Blob([serializeBookmarks(bookmarks)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mona-bookmarks.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
   bookmarks = load();
+  try {
+    if (lostWarning && isStoreUnexpectedlyEmpty(localStorage.getItem(COUNT_KEY), bookmarks.length)) {
+      lostWarning.textContent =
+        'Your saved bookmarks are missing — browser storage may have been cleared.';
+      lostWarning.hidden = false;
+      localStorage.removeItem(COUNT_KEY);
+    }
+  } catch {
+    /* storage unavailable */
+  }
   render();
 </script>
