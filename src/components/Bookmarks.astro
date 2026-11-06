@@ -1,11 +1,34 @@
 ---
-// Bookmarks component (scaffold).
-//
-// The markup below renders during the static build. The dynamic behavior —
-// adding a bookmark, generating a short slug, and persisting to the browser —
-// must run ONLY in the client-side <script>
-  // CLIENT-SIDE BOUNDARY — runs in the browser only (never during the static
-  // build), so localStorage is safe to touch here and nowhere else.
+---
+<section aria-labelledby="bookmarks-title">
+  <form id="add-bookmark">
+    <div class="field">
+      <label for="url">Website address</label>
+      <input
+        id="url"
+        name="url"
+        type="text"
+        inputmode="url"
+        autocomplete="url"
+        placeholder="example.com"
+        aria-describedby="url-hint form-message"
+        required
+      />
+    </div>
+    <button type="submit">Add bookmark</button>
+  </form>
+  <p id="url-hint" class="hint">Enter a web address with or without https://.</p>
+  <p id="form-message" class="message" role="status" aria-live="polite"></p>
+
+  <div id="list-header" hidden>
+    <h2 id="bookmarks-title" class="list-title">Saved bookmarks</h2>
+    <button id="clear-all" class="clear" type="button">Clear all</button>
+  </div>
+  <p id="empty-state" class="empty">No bookmarks yet. Add a link above to get started.</p>
+  <ul id="bookmark-list" aria-label="Saved bookmarks"></ul>
+</section>
+
+<script>
   import {
     STORAGE_KEY,
     SEPARATOR,
@@ -60,9 +83,9 @@
         link.rel = 'noopener noreferrer';
         link.textContent = bookmark.url;
 
-        const sep = document.createElement('span');
-        sep.className = 'sep';
-        sep.textContent = SEPARATOR;
+        const separator = document.createElement('span');
+        separator.className = 'sep';
+        separator.textContent = SEPARATOR;
 
         const slug = document.createElement('span');
         slug.className = 'slug';
@@ -72,6 +95,7 @@
         copy.type = 'button';
         copy.className = 'copy';
         copy.textContent = 'Copy';
+        copy.setAttribute('aria-label', `Copy ${bookmark.slug}`);
         copy.addEventListener('click', async () => {
           try {
             await navigator.clipboard.writeText(bookmark.slug);
@@ -82,7 +106,7 @@
           setTimeout(() => (copy.textContent = 'Copy'), 1500);
         });
 
-        li.append(link, sep, slug, copy);
+        li.append(link, separator, slug, copy);
         return li;
       }),
     );
@@ -97,21 +121,21 @@
       showMessage('Please enter a valid web address, like example.com.');
       return;
     }
-    const existing = bookmarks.find((b) => b.url === url);
+    const existing = bookmarks.find((bookmark) => bookmark.url === url);
     if (existing) {
       showMessage(`Already saved as ${existing.slug}.`);
       return;
     }
-    const slug = generateSlug(bookmarks.map((b) => b.slug));
+    const slug = generateSlug(bookmarks.map((bookmark) => bookmark.slug));
     bookmarks = [{ url, slug }, ...bookmarks];
+    showMessage('');
     save();
     render();
-    showMessage('');
     if (input) input.value = '';
   }
 
   form?.addEventListener('submit', (event) => {
-    event.preventDefault(); // keep this FIRST — stops the page from reloading
+    event.preventDefault();
     try {
       add(input?.value ?? '');
     } catch {
@@ -127,6 +151,7 @@
     } catch {
       /* storage unavailable; the in-memory list is already cleared */
     }
+    showMessage('');
     render();
   });
 
