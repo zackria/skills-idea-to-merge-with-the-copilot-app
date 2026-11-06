@@ -3,68 +3,133 @@
 //
 // The markup below renders during the static build. The dynamic behavior —
 // adding a bookmark, generating a short slug, and persisting to the browser —
-// must run ONLY in the client-side <script> boundary at the bottom of this
-// file. Astro runs that script in the browser, never during the build, so
-// browser-only APIs are safe there.
-//
-// You will implement the behavior in Step 3.
----
-<form id="add-bookmark">
-  <div class="field">
-    <label for="url">Link to save</label>
-    <input
-      id="url"
-      name="url"
-      type="text"
-      inputmode="url"
-      autocomplete="off"
-      spellcheck="false"
-      placeholder="https://example.com"
-      required
-    />
-  </div>
-  <button type="submit">Add bookmark</button>
-</form>
+// must run ONLY in the client-side <script>
+  // CLIENT-SIDE BOUNDARY — runs in the browser only (never during the static
+  // build), so localStorage is safe to touch here and nowhere else.
+  import {
+    STORAGE_KEY,
+    SEPARATOR,
+    generateSlug,
+    normalizeUrl,
+    parseBookmarks,
+    serializeBookmarks,
+    type Bookmark,
+  } from '../lib/bookmarks';
 
-<p class="hint">Paste a URL and select <strong>Add bookmark</strong> to generate its short <code>mona-</code> slug.</p>
+  const form = document.getElementById('add-bookmark') as HTMLFormElement | null;
+  const input = document.getElementById('url') as HTMLInputElement | null;
+  const list = document.getElementById('bookmark-list');
+  const emptyState = document.getElementById('empty-state');
+  const listHeader = document.getElementById('list-header');
+  const clearAll = document.getElementById('clear-all');
+  const message = document.getElementById('form-message');
 
-<p id="empty-state" class="empty">No bookmarks yet — add your first link above.</p>
+  let bookmarks: Bookmark[] = [];
 
-<div id="list-header" hidden>
-  <h2 class="list-title">Saved bookmarks</h2>
-  <button id="clear-all" type="button" class="clear">Clear all</button>
-</div>
+  function load(): Bookmark[] {
+    try {
+      return parseBookmarks(localStorage.getItem(STORAGE_KEY));
+    } catch {
+      return [];
+    }
+  }
 
-<ul id="bookmark-list" aria-label="Saved bookmarks" aria-live="polite">
-  <!-- Bookmarks render here in the browser. -->
-</ul>
+  function save(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, serializeBookmarks(bookmarks));
+    } catch {
+      showMessage('Could not save to browser storage; this bookmark will not persist.');
+    }
+  }
 
-<script>
-  // CLIENT-SIDE BOUNDARY — runs in the browser only.
-  //
-  // TODO (Step 3): implement the bookmarks feature here.
-  //   1. On form submit, call event.preventDefault() FIRST so the page
-  //      never reloads, then read and validate the original URL.
-  //   2. Generate a short slug with a "mona-" prefix (for example, base62
-  //      of a counter or hash → "mona-7fk2").
-  //   3. Save the original URL and its slug, then persist them in the browser.
-  //   4. Render each saved bookmark into #bookmark-list as a row (li.bookmark) with:
-  //        - the original URL as a link (.url) that opens in a new tab,
-  //        - its short slug shown as a badge (.slug), and
-  //        - a "Copy" button (.copy) that copies the slug.
-  //   5. Toggle empty vs. saved state: hide #empty-state and show #list-header
-  //      (the "Saved bookmarks" heading + "Clear all" button) once at least one
-  //      bookmark exists; reverse it when the list is empty.
-  //   6. Wire the #clear-all button to remove every saved bookmark (clear the
-  //      list, clear browser storage) after a quick confirm.
-  //   7. On page load, read the saved bookmarks from storage and render
-  //      them so the list persists across reloads.
-  //
-  // Because this code lives in a client <script>, browser storage APIs are
-  // safe to use here without breaking the static build.
-  const form = document.getElementById('add-bookmark');
+  function showMessage(text: string): void {
+    if (message) message.textContent = text;
+  }
+
+  function render(): void {
+    if (!list) return;
+    list.replaceChildren(
+      ...bookmarks.map((bookmark) => {
+        const li = document.createElement('li');
+        li.className = 'bookmark';
+
+        const link = document.createElement('a');
+        link.className = 'url';
+        link.href = bookmark.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = bookmark.url;
+
+        const sep = document.createElement('span');
+        sep.className = 'sep';
+        sep.textContent = SEPARATOR;
+
+        const slug = document.createElement('span');
+        slug.className = 'slug';
+        slug.textContent = bookmark.slug;
+
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'copy';
+        copy.textContent = 'Copy';
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(bookmark.slug);
+            copy.textContent = 'Copied!';
+          } catch {
+            copy.textContent = 'Copy failed';
+          }
+          setTimeout(() => (copy.textContent = 'Copy'), 1500);
+        });
+
+        li.append(link, sep, slug, copy);
+        return li;
+      }),
+    );
+    const hasItems = bookmarks.length > 0;
+    if (emptyState) emptyState.hidden = hasItems;
+    if (listHeader) listHeader.hidden = !hasItems;
+  }
+
+  function add(raw: string): void {
+    const url = normalizeUrl(raw);
+    if (!url) {
+      showMessage('Please enter a valid web address, like example.com.');
+      return;
+    }
+    const existing = bookmarks.find((b) => b.url === url);
+    if (existing) {
+      showMessage(`Already saved as ${existing.slug}.`);
+      return;
+    }
+    const slug = generateSlug(bookmarks.map((b) => b.slug));
+    bookmarks = [{ url, slug }, ...bookmarks];
+    save();
+    render();
+    showMessage('');
+    if (input) input.value = '';
+  }
+
   form?.addEventListener('submit', (event) => {
-    event.preventDefault(); // keep this — stops the page from reloading
-    // Implement in Step 3.
+    event.preventDefault(); // keep this FIRST — stops the page from reloading
+    try {
+      add(input?.value ?? '');
+    } catch {
+      showMessage('Something went wrong. Please try again.');
+    }
   });
+
+  clearAll?.addEventListener('click', () => {
+    if (!confirm('Remove all saved bookmarks?')) return;
+    bookmarks = [];
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* storage unavailable; the in-memory list is already cleared */
+    }
+    render();
+  });
+
+  bookmarks = load();
+  render();
 </script>
