@@ -122,3 +122,20 @@ export function parseBookmarks(raw: unknown): Bookmark[] {
 export function serializeBookmarks(bookmarks: Bookmark[]): string {
   return JSON.stringify(bookmarks.map(({ url, slug }) => ({ url, slug })));
 }
+
+/** Case-insensitive match of `query` against each bookmark's URL or slug. View-only: never mutates. */
+export function filterBookmarks(bookmarks: Bookmark[], query: string): Bookmark[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return bookmarks;
+  return bookmarks.filter(
+    (b) => b.url.toLowerCase().includes(q) || b.slug.toLowerCase().includes(q),
+  );
+}
+
+export const COUNT_KEY = 'mona-bookmarks-count';
+
+/** True when a previous save recorded bookmarks but the store is now empty. */
+export function isStoreUnexpectedlyEmpty(lastCount: unknown, current: number): boolean {
+  const n = typeof lastCount === 'string' ? Number.parseInt(lastCount, 10) : NaN;
+  return Number.isFinite(n) && n > 0 && current === 0;
+}
